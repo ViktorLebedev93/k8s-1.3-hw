@@ -35,6 +35,7 @@
  Создадим Deployment с двумя контейнерами
 
 deployment-nginx-multitool.yaml до
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -74,7 +75,7 @@ deployment.apps/nginx-multitool-deployment created
 
 Возникла ошибка, потому что оба контейнера пытаются использовать один и тот же порт 80
 
-deployment-nginx-multitool.yaml после исправления (изменили порт)
+[deployment-nginx-multitool.yaml](https://github.com/ViktorLebedev93/k8s-1.3-hw/blob/main/deployment-nginx-multitool.yaml) после исправления (изменили порт)
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -140,7 +141,7 @@ nginx-multitool-deployment-5fc5556b9-qwzdp   2/2     Running   0             5m9
 
 Создаем Service для доступа к репликам
 
-service-nginx-multitool.yaml
+[service-nginx-multitool.yaml](https://github.com/ViktorLebedev93/k8s-1.3-hw/blob/main/service-nginx-multitool.yaml)
 ```yaml
 apiVersion: v1
 kind: Service
@@ -175,7 +176,7 @@ nginx-multitool-service   ClusterIP   10.152.183.20   <none>        80/TCP,8080/
 
 Создаем отдельный Pod с multitool для проверки доступа
 
-pod-test-multitool.yaml
+[pod-test-multitool.yaml](https://github.com/ViktorLebedev93/k8s-1.3-hw/blob/main/pod-test-multitool.yaml)
 ```yaml
 apiVersion: v1
 kind: Pod
@@ -221,6 +222,102 @@ test-multitool                               1/1     Running   0             24s
 4. Продемонстрировать состояние пода до и после запуска сервиса.
 
 ### Решение 2
+
+Создадим Deployment с Init-контейнером
+
+[deployment-nginx-init.yaml](https://github.com/ViktorLebedev93/k8s-1.3-hw/blob/main/deployment-nginx-init.yaml)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-init-deployment
+  labels:
+    app: nginx-init
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-init
+  template:
+    metadata:
+      labels:
+        app: nginx-init
+    spec:
+      initContainers:
+      - name: init-check-service
+        image: busybox:latest
+        command: 
+        - sh
+        - -c
+        - |
+          echo "Waiting for service DNS to be resolvable..."
+          until nslookup nginx-init-service | grep -q "Address:"; do
+            echo "Service DNS not ready, waiting 2 seconds..."
+            sleep 2
+          done
+          echo "Service DNS is ready! Starting nginx..."
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+```
+
+initContainers — выполняется до запуска основного контейнера
+Init-контейнер проверяет доступность сервиса nginx-init-service через nslookup
+Основной контейнер (nginx) запустится только после успешного завершения init-контейнера
+
+Запускаем Deployment без Service
+
+```shell
+kubectl apply -f deployment-nginx-init.yaml
+deployment.apps/nginx-init-deployment created
+kubectl get pods
+NAME                                         READY   STATUS     RESTARTS      AGE
+hello-world                                  1/1     Running    1 (42m ago)   24h
+netology-web                                 1/1     Running    1 (42m ago)   24h
+nginx-init-deployment-5d75cfc6c9-fkqmk       0/1     Init:0/1   0             5s
+nginx-multitool-deployment-5fc5556b9-jt4lc   2/2     Running    0             24m
+nginx-multitool-deployment-5fc5556b9-qwzdp   2/2     Running    0             29m
+test-multitool                               1/1     Running    0             7m8s
+```
+
+![img6](img/img6.jpg)
+
+Init-контейнер в статусе Init:0/1, так как не может найти сервис nginx-init-service
+
+Создадим и запустим Service
+
+[service-nginx-init.yaml](https://github.com/ViktorLebedev93/k8s-1.3-hw/blob/main/service-nginx-init.yaml)
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-init-service
+spec:
+  selector:
+    app: nginx-init
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 80
+  type: ClusterIP
+```
+
+```shell
+kubectl apply -f service-nginx-init.yaml
+kubectl get svc
+NAME                      TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)           AGE
+kubernetes                ClusterIP   10.152.183.1    <none>        443/TCP           33h
+netology-svc              ClusterIP   10.152.183.34   <none>        80/TCP            24h
+nginx-init-service        ClusterIP   10.152.183.21   <none>        80/TCP            49m
+nginx-multitool-service   ClusterIP   10.152.183.20   <none>        80/TCP,8080/TCP   64m
+kubectl delete deployment nginx-init-deployment
+kubectl apply -f deployment-nginx-init.yaml
+```
+
+![img7](img/img7.jpg)
+![img8](img/img8.jpg)
 
 ------
 

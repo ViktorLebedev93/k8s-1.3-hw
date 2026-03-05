@@ -316,6 +316,8 @@ kubectl delete deployment nginx-init-deployment
 kubectl apply -f deployment-nginx-init.yaml
 ```
 
+Init-контейнер успешно завершился, и основной контейнер nginx запустился
+
 ![img7](img/img7.jpg)
 ![img8](img/img8.jpg)
 

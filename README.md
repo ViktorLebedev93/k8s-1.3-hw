@@ -32,6 +32,185 @@
 
 ### Решение 1
 
+ Создадим Deployment с двумя контейнерами
+
+deployment-nginx-multitool.yaml до
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-multitool-deployment
+  labels:
+    app: nginx-multitool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-multitool
+  template:
+    metadata:
+      labels:
+        app: nginx-multitool
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+      - name: multitool
+        image: wbitt/network-multitool
+        ports:
+        - containerPort: 80
+        env:
+        - name: HTTP_PORT
+          value: "80"
+```
+
+```shell
+kubectl apply -f deployment-nginx-multitool.yaml
+Warning: spec.template.spec.containers[1].ports[0]: duplicate port definition with spec.template.spec.containers[0].ports[0]
+deployment.apps/nginx-multitool-deployment created
+```
+
+Возникла ошибка, потому что оба контейнера пытаются использовать один и тот же порт 80
+
+deployment-nginx-multitool.yaml после исправления (изменили порт)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-multitool-deployment
+  labels:
+    app: nginx-multitool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-multitool
+  template:
+    metadata:
+      labels:
+        app: nginx-multitool
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+      - name: multitool
+        image: wbitt/network-multitool
+        ports:
+        - containerPort: 8080
+        env:
+        - name: HTTP_PORT
+          value: "8080"
+```
+
+Ошибка ушла
+
+```shell
+kubectl apply -f deployment-nginx-multitool.yaml
+deployment.apps/nginx-multitool-deployment configured
+kubectl get pods
+NAME                                         READY   STATUS    RESTARTS      AGE
+hello-world                                  1/1     Running   1 (13m ago)   23h
+netology-web                                 1/1     Running   1 (13m ago)   23h
+nginx-multitool-deployment-5fc5556b9-qwzdp   2/2     Running   0             80s
+kubectl get deployments
+NAME                         READY   UP-TO-DATE   AVAILABLE   AGE
+nginx-multitool-deployment   1/1     1            1           6m40s
+```
+
+![img1](img/img1.jpg)
+
+Масштабируем до 2 реплик
+
+```shell
+kubectl scale deployment nginx-multitool-deployment --replicas=2
+deployment.apps/nginx-multitool-deployment scaled
+kubectl get pods
+NAME                                         READY   STATUS    RESTARTS      AGE
+hello-world                                  1/1     Running   1 (17m ago)   23h
+netology-web                                 1/1     Running   1 (17m ago)   23h
+nginx-multitool-deployment-5fc5556b9-jt4lc   2/2     Running   0             25s
+nginx-multitool-deployment-5fc5556b9-qwzdp   2/2     Running   0             5m9s
+```
+
+![img2](img/img2.jpg)
+
+Создаем Service для доступа к репликам
+
+service-nginx-multitool.yaml
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-multitool-service
+spec:
+  selector:
+    app: nginx-multitool
+  ports:
+  - name: nginx-port
+    protocol: TCP
+    port: 80
+    targetPort: 80
+  - name: multitool-port
+    protocol: TCP
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP
+```
+
+```shell
+kubectl apply -f service-nginx-multitool.yaml
+service/nginx-multitool-service created
+kubectl get svc
+NAME                      TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)           AGE
+kubernetes                ClusterIP   10.152.183.1    <none>        443/TCP           32h
+netology-svc              ClusterIP   10.152.183.34   <none>        80/TCP            23h
+nginx-multitool-service   ClusterIP   10.152.183.20   <none>        80/TCP,8080/TCP   8s
+```
+
+![img3](img/img3.jpg)
+
+Создаем отдельный Pod с multitool для проверки доступа
+
+pod-test-multitool.yaml
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-multitool
+  labels:
+    app: test-multitool
+spec:
+  containers:
+  - name: multitool
+    image: wbitt/network-multitool
+    env:
+    - name: HTTP_PORT
+      value: "8080"
+    command: ["sleep", "3600"]
+```
+
+```shell
+kubectl apply -f pod-test-multitool.yaml
+pod/test-multitool created
+kubectl get pods -w
+NAME                                         READY   STATUS    RESTARTS      AGE
+hello-world                                  1/1     Running   1 (35m ago)   24h
+netology-web                                 1/1     Running   1 (35m ago)   23h
+nginx-multitool-deployment-5fc5556b9-jt4lc   2/2     Running   0             18m
+nginx-multitool-deployment-5fc5556b9-qwzdp   2/2     Running   0             22m
+test-multitool                               1/1     Running   0             24s
+```
+
+![img4](img/img4.jpg)
+
+Проверка доступа из тестового пода
+
+![img5](img/img5.jpg)
+
 ------
 
 ### Задание 2. Создать Deployment и обеспечить старт основного контейнера при выполнении условий
